@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            box-sizing: border-box;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .navbar {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100vw;
+            min-width: 0;
+            background-color: #f5f5f5;
+            padding: 0;
+            margin-bottom: 20px;
+            position: relative;
+            left: 50%;
+            right: 50%;
+            transform: translateX(-50%);
+            box-sizing: border-box;
+            height: 100px;
+        }
+        .navbar-logo {
+            height: 100px;
+            width: auto;
+            margin-right: 0;
+            margin-left: 20px;
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+        }
+        .navbar-title {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            color: #007bff;
+            font-weight: bold;
+            letter-spacing: 1px;
+            white-space: nowrap;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .file-input {
+            margin-bottom: 20px;
+            
+            border-radius: 10px;
+        }
+        .custom-file-label {
+            display: inline-block;
+            padding: 10px 24px;
+            background-color: #007bff;
+            color: #fff;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: background 0.2s;
+            border: none;
+            margin-bottom: 10px;
+        }
+        .custom-file-label:hover {
+            background-color: #0056b3;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        button:hover:not(:disabled) {
+            background-color: #0056b3;
+        }
+        .status-message {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .info {
+            background-color: #e3f2fd;
+            color: #1565c0;
+        }
+        .sheet-select {
+            margin: 10px 0;
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+        .sheet-select.visible {
+            display: block;
+        }
+        #fileInfo {
+            /* Only basic style by default */
+        }
+        #fileInfo.has-content {
+            border: 2px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        h1 {
+            text-align: center;
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #007bff;
+        }
+        /* Modal styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.2);
+        }
+        .modal-content {
+            background-color: #fff;
+            margin: 10vh auto;
+            padding: 30px 20px 20px 20px;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: visible !important;
+        }
+        .close {
+            position: absolute;
+            top: 10px;
+            right: 20px;
+            font-size: 28px;
+            font-weight: bold;
+            color: #888;
+            cursor: pointer;
+        }
+        .close:hover {
+            color: #c62828;
+        }
+        .modal-select-btn {
+            margin-top: 20px;
+            padding: 10px 24px;
+            background-color: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .modal-select-btn:hover {
+            background-color: #0056b3;
+        }
+    </style>
+    <style>
+    @media (max-width: 600px) {
+        .navbar-title {
+            font-size: 18px;
+            white-space: normal;
+            padding: 0 10px;
+            text-align: center;
+        }
+        .navbar-logo {
+            height: 60px;
+            margin-left: 5px;
+        }
+        .container {
+            padding: 10px;
+        }
+        .modal-content {
+            padding: 15px 5px 10px 5px;
+            max-width: 95vw;
+        }
+        .file-input {
+            padding: 5px 5px;
+        }
+        button {
+            padding: 8px 10px;
+            font-size: 14px;
+        }
+    }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <a href="https://odseknis.akademijanis.edu.rs/" style="display: inline-block; height: 100%;"><img src="static/images/akademija-logo-boja-latinica 1.png" alt="Logo" class="navbar-logo"></a>
+        <span class="navbar-title">PDF Generator radnih svezaka</span>
+    </nav>
+    <div class="container">
+        
+        <div class="file-input">
+            <label for="excelFile" class="custom-file-label">Izaberi Excel fajl</label>
+            <input type="file" id="excelFile" accept=".xls,.xlsx" style="display: none;">
+            <p id="fileInfo"></p>
+        </div>
+        <div class="button-group">
+            <button data-type="an" disabled style="background-color: #ccc; color: #888; cursor: not-allowed;" title="Work in progress">Analiza nastave</button>
+            <button data-type="edn" disabled>Evidencija držanja nastave</button>
+            <button data-type="izvestaj" disabled>Izveštaj o radu</button>
+            <button data-type="op" disabled>Osnovni podaci</button>
+        </div>
+        <div id="statusMessage" class="status-message"></div>
+    </div>
+
+    <!-- Modal for Izveštaj o radu -->
+    <div id="izvestajModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeModal">&times;</span>
+            <h2>Izaberite mesec</h2>
+            <select id="modalSheetSelect" class="sheet-select">
+                <option value="">Izaberite mesec...</option>
+            </select>
+            <button id="modalSelectBtn" class="modal-select-btn">Generiši</button>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const fileInput = document.getElementById('excelFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const buttons = document.querySelectorAll('button');
+        const statusMessage = document.getElementById('statusMessage');
+        // Remove old sheetSelect, use modalSheetSelect for modal
+        const modal = document.getElementById('izvestajModal');
+        const modalSheetSelect = document.getElementById('modalSheetSelect');
+        const modalSelectBtn = document.getElementById('modalSelectBtn');
+        const closeModal = document.getElementById('closeModal');
+
+        fileInput.addEventListener('change', function() {
+            const file = fileInput.files[0];
+            if (file) {
+                fileInfo.textContent = `Izabran fajl: ${file.name}`;
+                fileInfo.classList.add('has-content');
+                buttons.forEach(button => button.disabled = false);
+            } else {
+                fileInfo.textContent = '';
+                fileInfo.classList.remove('has-content');
+                buttons.forEach(button => button.disabled = true);
+            }
+            statusMessage.textContent = '';
+            statusMessage.className = 'status-message';
+        });
+
+        async function fetchAndPopulateSheets(file) {
+            modalSheetSelect.innerHTML = '<option value="">Izaberite mesec...</option>';
+            if (!file) return;
+            const formData = new FormData();
+            formData.append('excel_file', file);
+            try {
+                const response = await fetch('/get_available_sheets', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.sheets && data.sheets.length > 0) {
+                        data.sheets.forEach(sheet => {
+                            const option = document.createElement('option');
+                            option.value = sheet;
+                            option.textContent = sheet;
+                            modalSheetSelect.appendChild(option);
+                        });
+                        console.log('Sheets added to modalSheetSelect:', data.sheets);
+                    }
+                }
+            } catch (error) {
+                console.error('Error fetching sheets:', error);
+            }
+        }
+
+        buttons.forEach(button => {
+            // Prevent click handler for 'Analiza nastave' button
+            if (button.dataset.type === 'an') return;
+            button.addEventListener('click', async function() {
+                const reportType = this.dataset.type;
+                const file = fileInput.files[0];
+                
+                if (!file) {
+                    showStatus('Molim Vas da prvo odaberete fajl.', 'error');
+                    return;
+                }
+
+                if (reportType === 'izvestaj') {
+                    // Show modal and fetch sheets
+                    await fetchAndPopulateSheets(file);
+                    modal.style.display = 'block';
+                    return;
+                }
+
+                // Disable all buttons during processing
+                buttons.forEach(btn => btn.disabled = true);
+                showStatus('Procesiranje fajla...', 'info');
+
+                const formData = new FormData();
+                formData.append('excel_file', file);
+
+                try {
+                    const response = await fetch(`/generate/${reportType}`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                    if (!response.ok) {
+                        const errorData = await response.json();
+                        throw new Error(errorData.error || 'Greška u obradi fajla');
+                    }
+                    const encodedName = response.headers.get('Professor-Name');
+                    let professorName = '';
+                    if (encodedName) {
+                        try {
+                            professorName = atob(encodedName);
+                            professorName = decodeURIComponent(escape(professorName));
+                        } catch (e) {
+                            console.error('Error decoding professor name:', e);
+                        }
+                    }
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    let baseFilename = reportType === 'edn' ? 'evidencija_drzanja_nastave' : (reportType === 'op' ? 'osnovni_podaci' : '');
+                    const filename = professorName ? 
+                        `${baseFilename}_${professorName.replace(/\s+/g, '_')}.pdf` :
+                        `${baseFilename}.pdf`;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                    showStatus('PDF uspešno generisan i preuzet!', 'success');
+                } catch (error) {
+                    showStatus(`Greška: ${error.message}`, 'error');
+                } finally {
+                    if (fileInput.files.length > 0) {
+                        buttons.forEach(btn => btn.disabled = false);
+                    }
+                }
+            });
+        });
+
+        function showStatus(message, type) {
+            statusMessage.textContent = message;
+            statusMessage.className = `status-message ${type}`;
+        }
+
+        // Modal logic
+        closeModal.onclick = function() {
+            modal.style.display = 'none';
+        };
+        window.onclick = function(event) {
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        };
+        modalSelectBtn.onclick = async function() {
+            const file = fileInput.files[0];
+            const selectedSheet = modalSheetSelect.value;
+            if (!selectedSheet) {
+                showStatus('Molim Vas izaberite mesec.', 'error');
+                return;
+            }
+            // Disable all buttons during processing
+            buttons.forEach(btn => btn.disabled = true);
+            showStatus('Procesiranje fajla...', 'info');
+            const formData = new FormData();
+            formData.append('excel_file', file);
+            formData.append('selected_sheet', selectedSheet);
+            try {
+                const response = await fetch(`/generate/izvestaj`, {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Greška u obradi fajla');
+                }
+                const encodedName = response.headers.get('Professor-Name');
+                let professorName = '';
+                if (encodedName) {
+                    try {
+                        professorName = atob(encodedName);
+                        professorName = decodeURIComponent(escape(professorName));
+                    } catch (e) {
+                        console.error('Error decoding professor name:', e);
+                    }
+                }
+                const selectedSheetHeader = response.headers.get('Selected-Sheet');
+                let selectedSheetForName = '';
+                if (selectedSheetHeader) {
+                    selectedSheetForName = selectedSheetHeader.replace(/\s+/g, '_');
+                }
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                let baseFilename = 'izvestaj_o_radu';
+                let filename = baseFilename;
+                if (professorName) filename += `_${professorName.replace(/\s+/g, '_')}`;
+                if (selectedSheetForName) filename += `_${selectedSheetForName}`;
+                filename += '.pdf';
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                showStatus('PDF uspešno generisan i preuzet!', 'success');
+            } catch (error) {
+                showStatus(`Greška: ${error.message}`, 'error');
+            } finally {
+                modal.style.display = 'none';
+                if (fileInput.files.length > 0) {
+                    buttons.forEach(btn => btn.disabled = false);
+                }
+            }
+        };
+    });
+    </script>
+</body>
+</html>
