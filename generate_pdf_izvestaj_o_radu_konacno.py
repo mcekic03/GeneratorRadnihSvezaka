@@ -119,7 +119,7 @@ def generate_pdf_testing_test1(data, pdf_path, professor_name):
                             clean_col = str(col).replace("Kratak opis (max 30 reči)", "").strip()
                             if clean_col:
                                 wrapped = "<br/>".join(textwrap.wrap(clean_col, width=40))
-                                row_content.append(Paragraph(f"<b>{chr(66+i)}:</b> {wrapped}", style_normal))
+                                row_content.append(Paragraph(f"{wrapped}", style_normal))
                             else:
                                 row_content.append(Paragraph("", style_normal))
                         else:
