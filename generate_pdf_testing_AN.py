@@ -398,7 +398,7 @@ def generate_pdf_an(tables_data, pdf_path, professor_name):
     doc.build(story)
 
 # File processing
-filepath = "Novi_Izveštaj o radu_za_Nastavnike_Natasa_Bogdanovic.xlsx"
+filepath = "Novi_Izveštaj o radu_za_Nastavnike_Natasa_Bogdanovic - Copy.xlsx"
 
 # First, analyze the structure
 analysis_df = analyze_sheet_structure(filepath)
