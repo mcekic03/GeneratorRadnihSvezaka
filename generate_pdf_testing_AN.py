@@ -10,7 +10,6 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.platypus import Image
 from reportlab.lib.enums import TA_CENTER
 from reportlab.pdfbase.pdfmetrics import stringWidth
-from process_student_data import process_student_attendance
 
 def analyze_sheet_structure(filepath, sheet_name="Analiza nastave"):
     try:
@@ -47,103 +46,102 @@ def process_analiza_nastave(filepath):
         
         print("\nDataFrame Shape:", df.shape)
         
-        # Initialize table 1 data
-        table1_data = []  # For "Broj časova nastave"
-        
-        # Find the header rows and column positions
-        header_row = None
-        subheader_row = None
-        column_positions = {}
-        
-        # First find the main header row
+        # Define column indices for each table (0-based)
+        table1_col_indices = [1, 2, 3, 4]  # B, C, D, E
+        table2_col_indices = [9, 10]       # J, K
+
+        # Define headers for each table
+        table1_headers = [
+            "Predmeti", "predavanja", "(blank)", "Grand Total"
+        ]
+        table2_headers = [
+            "Predmeti", "Prosečan broj studenata"
+        ]
+        table1_data = [table1_headers]
+        table2_data = [table2_headers]
+
+        # Start after the header rows (find the first data row)
+        data_start_row = None
         for idx, row in df.iterrows():
             row_values = [str(val).strip() if pd.notna(val) else "" for val in row]
-            if 'Broj časova nastave' in row_values:
-                header_row = idx
-                subheader_row = idx + 1
+            if any(row_values[i] for i in table1_col_indices):
+                data_start_row = idx
                 break
-        
-        if header_row is None:
-            raise ValueError("Could not find header row")
-            
-        # Get the actual headers and their positions from the subheader row
-        subheader_values = [str(val).strip() if pd.notna(val) else "" for val in df.iloc[subheader_row]]
-        for col_idx, value in enumerate(subheader_values):
-            if value in ['predavanja', '(blank)', 'Grand Total']:
-                column_positions[value] = col_idx
-        
-        # Initialize headers for table 1
-        table1_headers = ["Predmeti", "predavanja", "(blank)", "Grand Total"]
-        
-        # Add headers to table
-        table1_data.append(table1_headers)
-        
-        # Initialize tracking variables
+        if data_start_row is None:
+            raise ValueError("No data rows found for table 1.")
+
+        # Trackers for dropdowns
         current_location = None
         current_year = None
         current_month = None
         months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec']
-        
-        # Process data rows for table 1
-        for idx, row in df.iterrows():
-            if idx <= subheader_row:  # Skip header rows
-                continue
-                
+
+        # Extract data for table 1
+        for idx in range(data_start_row + 1, len(df)):
+            row = df.iloc[idx]
             row_values = [str(val).strip() if pd.notna(val) else "" for val in row]
-            if not any(row_values):  # Skip empty rows
+            # Only add if at least one value in the range is not empty
+            if not any(row_values[i] for i in table1_col_indices):
                 continue
-            
-            first_value = next((val for val in row_values if val), "")
-            
-            # Check for location (e.g., 'Niš')
+            # Track dropdowns
+            first_value = row_values[1]  # B column
+            if first_value == '':
+                continue
             if first_value == 'Niš':
                 current_location = first_value
                 continue
-                
-            # Check for year
             if first_value.isdigit() and len(first_value) == 4:
                 current_year = first_value
                 continue
-                
-            # Check for month
             if first_value.lower() in months:
                 current_month = first_value
                 continue
-                
-            # Process subject rows
-            if first_value and not first_value.isdigit() and first_value.lower() not in months:
-                subject_name = first_value
-                
-                # Extract values for table 1
-                values = {}
-                for col_name, col_idx in column_positions.items():
-                    if col_idx < len(row_values):
-                        val = row_values[col_idx]
-                        try:
-                            # Try to convert to float to validate numeric value
-                            float(str(val).replace(',', '.'))
-                            values[col_name] = val
-                        except (ValueError, TypeError):
-                            values[col_name] = ""
-                
-                # Only add if we have any valid values
-                if any(values.values()):
-                    prefix = f"{current_location}-" if current_location else ""
-                    full_name = f"{prefix}{current_year}-{current_month}-{subject_name}"
-                    row_data = [full_name]
-                    for col in ['predavanja', '(blank)', 'Grand Total']:
-                        row_data.append(values.get(col, ""))
-                    table1_data.append(row_data)
-        
-        if len(table1_data) <= 1:  # Only headers
-            raise ValueError("No data found for table 1")
-        
-        # Process table 2 data using the separate module
-        table2_data = process_student_attendance(filepath)
-        if not table2_data:
-            raise ValueError("No data found for table 2")
-            
-        # Store the processed tables
+            # Compose subject name
+            subject = first_value
+            composite_name = " - ".join(filter(None, [current_location, current_year, current_month, subject]))
+            table1_row = [composite_name]
+            for i in table1_col_indices[1:]:
+                table1_row.append(row_values[i] if i < len(row_values) else "")
+            table1_data.append(table1_row)
+
+        # Reset trackers for table 2
+        current_location = None
+        current_year = None
+        current_month = None
+        # Extract data for table 2
+        for idx in range(data_start_row + 1, len(df)):
+            row = df.iloc[idx]
+            row_values = [str(val).strip() if pd.notna(val) else "" for val in row]
+            if not any(row_values[i] for i in table2_col_indices):
+                continue
+            # Track dropdowns
+            first_value = row_values[9]  # J column
+            if first_value == '':
+                continue
+            if first_value == 'Niš':
+                current_location = first_value
+                continue
+            if first_value.isdigit() and len(first_value) == 4:
+                current_year = first_value
+                continue
+            if first_value.lower() in months:
+                current_month = first_value
+                continue
+            # Compose subject name
+            subject = first_value
+            composite_name = " - ".join(filter(None, [current_location, current_year, current_month, subject]))
+            table2_row = [composite_name]
+            for i in table2_col_indices[1:]:
+                table2_row.append(row_values[i] if i < len(row_values) else "")
+            table2_data.append(table2_row)
+
+        # Remove double header in table 1 if present
+        if len(table1_data) > 1 and all(
+            table1_data[1][i].strip().lower() == table1_headers[i].strip().lower()
+            for i in range(len(table1_headers))
+        ):
+            table1_data.pop(1)
+
         tables_data = {
             'table1': table1_data,
             'table2': table2_data
@@ -151,6 +149,10 @@ def process_analiza_nastave(filepath):
         
         print("\nProcessed Table 1 (Broj časova nastave):")
         for row in table1_data:
+            print(row)
+            
+        print("\nProcessed Table 2 (Prosečan broj studenata):")
+        for row in table2_data:
             print(row)
         
         # Read "Osnovni podaci" sheet for professor's name
@@ -343,7 +345,7 @@ analysis_df = analyze_sheet_structure(filepath)
 tables_data, professor_name = process_analiza_nastave(filepath)
 
 if tables_data and professor_name:
-    generate_pdf_an(tables_data, "ANtest28.pdf", professor_name)
+    generate_pdf_an(tables_data, "ANtest45.pdf", professor_name)
     print("PDF generated successfully!")
 else:
     print("Failed to generate PDF due to data processing errors.") 
