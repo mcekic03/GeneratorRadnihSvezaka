@@ -11,167 +11,227 @@ from reportlab.platypus import Image
 from reportlab.lib.enums import TA_CENTER
 from reportlab.pdfbase.pdfmetrics import stringWidth
 
+def is_header(row):
+    non_empty = row.dropna()
+    # First table headers
+    table1_keywords = {"Predmeti", "predavanja", "(blank)", "Grand Total"}
+    # Second table headers
+    table2_keywords = {"Prosečan broj studenata", "Vrsta nastave"}
+    
+    row_values = {str(cell).strip() for cell in non_empty}
+    # Check if this row contains enough header keywords for either table
+    is_table1_header = len(row_values.intersection(table1_keywords)) >= 2
+    is_table2_header = len(row_values.intersection(table2_keywords)) >= 1
+    
+    return is_table1_header or is_table2_header
+
+def is_metadata_row(row):
+    months = {'jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'}
+    non_empty = [str(cell).strip().lower() for cell in row.dropna()]
+    if not non_empty:
+        return True
+    if any(cell.isdigit() and len(cell) == 4 for cell in non_empty):  # year
+        return True
+    if any(cell in months for cell in non_empty):
+        return True
+    if any(cell in {'niš'} for cell in non_empty):
+        return True
+    return False
+
+def extract_tables_heuristic(df):
+    tables = []
+    current_table = None
+    current_headers = None
+    
+    for i in range(len(df)):
+        row = df.iloc[i]
+        row_values = [str(val).strip() if pd.notna(val) else "" for val in row]
+        
+        # Skip empty rows
+        if not any(row_values):
+            if current_table is not None:
+                if len(current_table) > 0:
+                    tables.append(pd.DataFrame(current_table, columns=current_headers))
+                current_table = None
+                current_headers = None
+            continue
+        
+        # Check if this is a header row
+        if is_header(row):
+            # If we have a current table, save it before starting new one
+            if current_table is not None and len(current_table) > 0:
+                tables.append(pd.DataFrame(current_table, columns=current_headers))
+            
+            # Start new table
+            non_empty_indices = [i for i, val in enumerate(row_values) if val]
+            current_headers = [row_values[i] for i in non_empty_indices]
+            current_table = []
+            continue
+        
+        # If we have a current table, add data row
+        if current_headers is not None and not is_metadata_row(row):
+            # Extract values for current columns
+            row_data = []
+            for header in current_headers:
+                # Find the value in the row that best matches this column
+                value = next((val for val in row_values if val), "")
+                row_data.append(value)
+            if any(row_data):  # Only add non-empty rows
+                current_table.append(row_data)
+    
+    # Don't forget to add the last table if exists
+    if current_table is not None and len(current_table) > 0:
+        tables.append(pd.DataFrame(current_table, columns=current_headers))
+    
+    return tables
+
 def analyze_sheet_structure(filepath, sheet_name="Analiza nastave"):
     try:
         print(f"\n=== Analyzing {sheet_name} Sheet Structure ===")
-        # Read the sheet
         df = pd.read_excel(
             filepath,
             sheet_name=sheet_name,
             header=None,
             engine='openpyxl'
         )
-        
         print("\nRaw DataFrame shape:", df.shape)
         print("\nFirst 20 rows of data:")
         for idx, row in df.head(20).iterrows():
             non_empty = [str(cell) for cell in row if pd.notna(cell)]
             if non_empty:
                 print(f"Row {idx}: {non_empty}")
-        
         return df
     except Exception as e:
         print(f"Error analyzing sheet: {e}")
         return None
 
+def find_header_and_cols(df, col_names):
+    for r_idx, row in df.iterrows():
+        row_values = [str(v).strip() for v in row]
+        if all(name in row_values for name in col_names):
+            col_indices = {name: row_values.index(name) for name in col_names}
+            return r_idx, col_indices
+    return -1, None
+
 def process_analiza_nastave(filepath):
     try:
-        print("\n=== Starting Data Processing ===")
+        print("\n=== Starting Data Processing (Un-Pivot Method) ===")
         df = pd.read_excel(
             filepath,
             sheet_name="Analiza nastave",
             header=None,
             engine='openpyxl'
         )
-        
-        print("\nDataFrame Shape:", df.shape)
-        
-        # Define column indices for each table (0-based)
-        table1_col_indices = [1, 2, 3, 4]  # B, C, D, E
-        table2_col_indices = [9, 10]       # J, K
 
-        # Define headers for each table
-        table1_headers = [
-            "Predmeti", "predavanja", "(blank)", "Grand Total"
-        ]
-        table2_headers = [
-            "Predmeti", "Prosečan broj studenata"
-        ]
-        table1_data = [table1_headers]
-        table2_data = [table2_headers]
+        # -- Table 1: Broj časova nastave --
+        t1_header_names = ["Predmeti", "predavanja", "(blank)", "Grand Total"]
+        t1_header_row, t1_cols = find_header_and_cols(df, t1_header_names)
+        if t1_header_row == -1: raise ValueError("Table 1 headers not found")
+        
+        table1_data = [["Predmeti", "predavanja", "(blank)", "Grand Total"]]
+        
+        # Context tracking
+        current_location, current_year, current_month = "", "", ""
+        months = {'jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec'}
+        context_values = {"Niš", "2025", "2024", "jan", "okt", "nov", "dec", ""}
 
-        # Start after the header rows (find the first data row)
-        data_start_row = None
-        for idx, row in df.iterrows():
-            row_values = [str(val).strip() if pd.notna(val) else "" for val in row]
-            if any(row_values[i] for i in table1_col_indices):
-                data_start_row = idx
+        for r_idx in range(t1_header_row + 1, len(df)):
+            row = df.iloc[r_idx]
+            # Stop Table 1 extraction at the first empty row
+            if row.isnull().all() or all(str(cell).strip() == "" for cell in row):
                 break
-        if data_start_row is None:
-            raise ValueError("No data rows found for table 1.")
 
-        # Trackers for dropdowns
-        current_location = None
-        current_year = None
-        current_month = None
-        months = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'avg', 'sep', 'okt', 'nov', 'dec']
+            # Find context, which might be in various columns (like Table 2)
+            for cell_val in row:
+                s_cell_val = str(cell_val).strip()
+                l_cell_val = s_cell_val.lower()
+                if l_cell_val == 'niš': current_location = s_cell_val
+                elif s_cell_val.isdigit() and len(s_cell_val) == 4: current_year = s_cell_val
+                elif l_cell_val in months: current_month = s_cell_val
 
-        # Extract data for table 1
-        for idx in range(data_start_row + 1, len(df)):
-            row = df.iloc[idx]
-            row_values = [str(val).strip() if pd.notna(val) else "" for val in row]
-            # Only add if at least one value in the range is not empty
-            if not any(row_values[i] for i in table1_col_indices):
-                continue
-            # Track dropdowns
-            first_value = row_values[1]  # B column
-            if first_value == '':
-                continue
-            if first_value == 'Niš':
-                current_location = first_value
-                continue
-            if first_value.isdigit() and len(first_value) == 4:
-                current_year = first_value
-                continue
-            if first_value.lower() in months:
-                current_month = first_value
-                continue
-            # Compose subject name
-            subject = first_value
-            composite_name = " - ".join(filter(None, [current_location, current_year, current_month, subject]))
-            table1_row = [composite_name]
-            for i in table1_col_indices[1:]:
-                table1_row.append(row_values[i] if i < len(row_values) else "")
-            table1_data.append(table1_row)
+            # Check for subject and data
+            subject = str(row.iloc[t1_cols["Predmeti"]]).strip()
+            predavanja_val = row.iloc[t1_cols["predavanja"]]
 
-        # Reset trackers for table 2
-        current_location = None
-        current_year = None
-        current_month = None
-        # Extract data for table 2
-        for idx in range(data_start_row + 1, len(df)):
-            row = df.iloc[idx]
-            row_values = [str(val).strip() if pd.notna(val) else "" for val in row]
-            if not any(row_values[i] for i in table2_col_indices):
-                continue
-            # Track dropdowns
-            first_value = row_values[9]  # J column
-            if first_value == '':
-                continue
-            if first_value == 'Niš':
-                current_location = first_value
-                continue
-            if first_value.isdigit() and len(first_value) == 4:
-                current_year = first_value
-                continue
-            if first_value.lower() in months:
-                current_month = first_value
-                continue
-            # Compose subject name
-            subject = first_value
-            composite_name = " - ".join(filter(None, [current_location, current_year, current_month, subject]))
-            table2_row = [composite_name]
-            for i in table2_col_indices[1:]:
-                table2_row.append(row_values[i] if i < len(row_values) else "")
-            table2_data.append(table2_row)
+            # Accept both numeric and string numbers
+            is_valid_predavanja = False
+            if pd.api.types.is_number(predavanja_val):
+                is_valid_predavanja = True
+            else:
+                try:
+                    if str(predavanja_val).strip() and str(predavanja_val).strip().lower() != 'nan':
+                        float(predavanja_val)
+                        is_valid_predavanja = True
+                except Exception:
+                    pass
 
-        # Remove double header in table 1 if present
-        if len(table1_data) > 1 and all(
-            table1_data[1][i].strip().lower() == table1_headers[i].strip().lower()
-            for i in range(len(table1_headers))
-        ):
-            table1_data.pop(1)
+            if subject and subject not in context_values and subject.lower() != "nan" and is_valid_predavanja:
+                predmeti_str = f"{current_location} - {current_year} - {current_month} - {subject}"
+                data_row = [
+                    predmeti_str,
+                    predavanja_val,
+                    row.iloc[t1_cols["(blank)"]],
+                    row.iloc[t1_cols["Grand Total"]]
+                ]
+                table1_data.append(data_row)
 
+        # -- Table 2: Prosečan broj studenata --
+        t2_header_names = ["Predmeti", "Prosečan broj studenata"]
+        t2_header_row, t2_cols = find_header_and_cols(df, t2_header_names)
+        if t2_header_row == -1: raise ValueError("Table 2 headers not found")
+
+        table2_data = [["Predmeti", "Prosečan broj studenata"]]
+        
+        current_location, current_year, current_month = "", "", ""
+
+        for r_idx in range(t2_header_row + 1, len(df)):
+            row = df.iloc[r_idx]
+            # Stop Table 2 extraction at the first empty row
+            if row.isnull().all() or all(str(cell).strip() == "" for cell in row):
+                break
+
+            # Find context, which might be in various columns
+            for cell_val in row:
+                s_cell_val = str(cell_val).strip()
+                l_cell_val = s_cell_val.lower()
+                if l_cell_val == 'niš': current_location = s_cell_val
+                elif s_cell_val.isdigit() and len(s_cell_val) == 4: current_year = s_cell_val
+                elif l_cell_val in months: current_month = s_cell_val
+
+            # Check for subject and data
+            subject = str(row.iloc[t2_cols["Predmeti"]]).strip()
+            prosecan_val = row.iloc[t2_cols["Prosečan broj studenata"]]
+
+            # Only add if subject is not empty, not nan, and not a context value
+            if subject and subject not in context_values and subject.lower() != "nan" and pd.api.types.is_number(prosecan_val):
+                predmeti_str = f"{current_location} - {current_year} - {current_month} - {subject}"
+                data_row = [predmeti_str, prosecan_val]
+                table2_data.append(data_row)
+        
         tables_data = {
             'table1': table1_data,
             'table2': table2_data
         }
         
-        print("\nProcessed Table 1 (Broj časova nastave):")
-        for row in table1_data:
-            print(row)
-            
-        print("\nProcessed Table 2 (Prosečan broj studenata):")
-        for row in table2_data:
-            print(row)
-        
-        # Read "Osnovni podaci" sheet for professor's name
+        print(f"\nExtracted tables successfully. Showing contents:")
+        for idx, t in enumerate([table1_data, table2_data], 1):
+            print(f"\nTable {idx} (first 5 rows):")
+            for row in t[:6]:
+                print(row)
+                
+        # Read professor name
         osnovni_podaci = pd.read_excel(filepath, sheet_name="Osnovni podaci", header=None)
-        
-        # Extract professor's name
         ime_mask = osnovni_podaci[1] == "Ime"
         prezime_mask = osnovni_podaci[1] == "Prezime"
-        
         if not ime_mask.any() or not prezime_mask.any():
             raise ValueError('Could not find "Ime" or "Prezime" in "Osnovni podaci" sheet')
             
         ime_row = ime_mask.idxmax()
         prezime_row = prezime_mask.idxmax()
-        
         professor_name = f"{str(osnovni_podaci.iloc[ime_row, 2]).strip()} {str(osnovni_podaci.iloc[prezime_row, 2]).strip()}"
         
         return tables_data, professor_name
-
+        
     except Exception as e:
         print(f"Error processing Excel file: {e}")
         import traceback
@@ -272,7 +332,8 @@ def generate_pdf_an(tables_data, pdf_path, professor_name):
             processed_row = []
             for col_idx, cell in enumerate(row):
                 style = header_style if row_idx == 0 else cell_style
-                processed_row.append(Paragraph(str(cell), style))
+                cell_text = str(cell) if pd.notna(cell) else ""
+                processed_row.append(Paragraph(cell_text, style))
             table1_processed.append(processed_row)
 
         # Calculate column widths
@@ -309,7 +370,8 @@ def generate_pdf_an(tables_data, pdf_path, professor_name):
             processed_row = []
             for col_idx, cell in enumerate(row):
                 style = header_style if row_idx == 0 else cell_style
-                processed_row.append(Paragraph(str(cell), style))
+                cell_text = str(cell) if pd.notna(cell) else ""
+                processed_row.append(Paragraph(cell_text, style))
             table2_processed.append(processed_row)
 
         # Calculate column widths
@@ -345,7 +407,7 @@ analysis_df = analyze_sheet_structure(filepath)
 tables_data, professor_name = process_analiza_nastave(filepath)
 
 if tables_data and professor_name:
-    generate_pdf_an(tables_data, "ANtest45.pdf", professor_name)
+    generate_pdf_an(tables_data, "ANtest49.pdf", professor_name)
     print("PDF generated successfully!")
 else:
     print("Failed to generate PDF due to data processing errors.") 
