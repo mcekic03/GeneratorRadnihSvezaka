@@ -7,8 +7,11 @@ from generate_pdf_izvestaj_o_radu_konacno import process_excel as process_izvest
 from generate_pdf_testing_OP import process_excel as process_op, generate_pdf_testing_test1 as generate_pdf_op
 import traceback
 import base64
+from generatorpdfkonacno import generate_pdf
+from datetime import datetime
+from zipfile import ZipFile
 
-from waitress import serve
+#from waitress import serve
 
 app = Flask(__name__, static_folder='static')
 
@@ -153,6 +156,83 @@ def generate_report(report_type):
     except Exception as e:
         return jsonify({'error': f'Neuspelo procesiranje fajla: {str(e)}'}), 500
 
+@app.route('/procesiranje', methods=['POST'])
+def procesiranje():
+    if 'excel_file' not in request.files or 'professor_name' not in request.form:
+        return jsonify({'error': 'Excel fajl i ime profesora su obavezni.'}), 400
+    file = request.files['excel_file']
+    professor_name = request.form['professor_name']
+    filename = file.filename
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(filepath)
+    try:
+        df = pd.read_excel(filepath)
+        professor_data = df[df['Ime Predavača'] == professor_name]
+        if professor_data.empty:
+            return jsonify({'error': f'Nisu pronađeni podaci o profesoru sa imenom: {professor_name}'}), 404
+        columns_to_send = [
+            "Ime Predavača",
+            "Naziv Predmeta",
+            "Pozicija",
+            "Tip Predavanja",
+            "Nedeljni Broj Časova",
+            "Broj Grupa",
+            "Tip studija",
+            "Odsek",
+            "Ukupno casova"
+        ]
+        professor_data_filtered = professor_data[columns_to_send]
+        pdf_name = f"{professor_name.replace(' ', '_')}_{datetime.now().strftime('Opterecenje_%Y%m%d_%H%M%S')}.pdf"
+        pdf_path = os.path.join(PDF_FOLDER, pdf_name)
+        generate_pdf(professor_data_filtered, pdf_path)
+        return send_file(pdf_path, as_attachment=True, download_name=pdf_name, mimetype="application/pdf")
+    except Exception as e:
+        return jsonify({'error': f'Greška u procesiranju: {str(e)}'}), 500
+
+@app.route('/procesiranjesvih', methods=['POST'])
+def procesiranjesvih():
+    if 'excel_file_svih' not in request.files:
+        return jsonify({'error': 'Excel fajl je obavezan.'}), 400
+    file = request.files['excel_file_svih']
+    filename = file.filename
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(filepath)
+    try:
+        df = pd.read_excel(filepath)
+        if 'Ime Predavača' not in df.columns:
+            return jsonify({'error': "Excel fajl mora da sadrži 'Ime Predavača' kolonu."}), 400
+        unique_professors = df['Ime Predavača'].dropna().unique()
+        pdf_files = []
+        for professor_name in unique_professors:
+            professor_data = df[df['Ime Predavača'] == professor_name]
+            if not professor_data.empty:
+                columns_to_send = [
+                    "Ime Predavača",
+                    "Naziv Predmeta",
+                    "Pozicija",
+                    "Tip Predavanja",
+                    "Nedeljni Broj Časova",
+                    "Broj Grupa",
+                    "Tip studija",
+                    "Odsek",
+                    "Ukupno casova"
+                ]
+                professor_data_filtered = professor_data[columns_to_send]
+                pdf_name = f"{professor_name.replace(' ', '_')}_{datetime.now().strftime('Opterecenje_%Y%m%d_%H%M%S')}.pdf"
+                pdf_path = os.path.join(PDF_FOLDER, pdf_name)
+                generate_pdf(professor_data_filtered, pdf_path)
+                pdf_files.append(pdf_name)
+        if not pdf_files:
+            return jsonify({'error': 'Nije generisan nijedan PDF. Proverite učitane podatke.'}), 400
+        zip_filename = f"professors_pdfs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        zip_filepath = os.path.join(PDF_FOLDER, zip_filename)
+        with ZipFile(zip_filepath, 'w') as zipf:
+            for pdf_file in pdf_files:
+                zipf.write(os.path.join(PDF_FOLDER, pdf_file), pdf_file)
+        return send_file(zip_filepath, as_attachment=True, download_name=zip_filename, mimetype="application/zip")
+    except Exception as e:
+        return jsonify({'error': f'Greška u procesiranju svih: {str(e)}'}), 500
+
 if __name__ == "__main__": 
-    #app.run(debug=True, port=1000)
-    serve(app, host='0.0.0.0', port=80)
+    app.run(debug=True, port=1000)
+    #serve(app, host='0.0.0.0', port=80)

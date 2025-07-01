@@ -109,6 +109,11 @@
             padding: 10px;
             border-radius: 5px;
         }
+        #fileInfoOpterecenje.has-content {
+            border: 2px solid #ddd;
+            padding: 10px;
+            border-radius: 5px;
+        }
         h1 {
             text-align: center;
             font-size: 36px;
@@ -170,6 +175,36 @@
         .modal-select-btn:hover {
             background-color: #0056b3;
         }
+        .main-flex {
+            display: flex;
+            flex-direction: row;
+            gap: 32px;
+            justify-content: center;
+            align-items: flex-start;
+            margin: 0 auto;
+            max-width: 1700px;
+        }
+        .container {
+            flex: 1 1 0;
+            min-width: 340px;
+            max-width: 600px;
+        }
+        #pdfGeneratorContainer {
+            margin-right: 0;
+        }
+        #opterecenjeContainer {
+            margin-left: 0;
+        }
+        @media (max-width: 1200px) {
+            .main-flex {
+                flex-direction: column;
+                gap: 20px;
+                max-width: 98vw;
+            }
+            .container {
+                max-width: 98vw;
+            }
+        }
     </style>
     <style>
     @media (max-width: 600px) {
@@ -197,20 +232,37 @@
     <div class="logo-center">
         <a href="https://odseknis.akademijanis.edu.rs/" style="display: inline-block;"><img src="static/images/akademija-logo-boja-latinica 1.png" alt="Logo" class="logo-center-img"></a>
     </div>
-    <div class="container">
-        <h1>PDF Generator radnih svezaka</h1>
-        <div class="file-input">
-            <label for="excelFile" class="custom-file-label">Izaberi Excel fajl</label>
-            <input type="file" id="excelFile" accept=".xls,.xlsx" style="display: none;">
-            <p id="fileInfo"></p>
+    <div class="main-flex">
+        <div class="container" id="pdfGeneratorContainer">
+            <h1>PDF Generator radnih svezaka</h1>
+            <div class="file-input">
+                <label for="excelFile" class="custom-file-label">Izaberi Excel fajl</label>
+                <input type="file" id="excelFile" accept=".xls,.xlsx" style="display: none;">
+                <p id="fileInfo"></p>
+            </div>
+            <div class="button-group">
+                <button data-type="an" disabled>Analiza nastave</button>
+                <button data-type="edn" disabled>Evidencija držanja nastave</button>
+                <button data-type="izvestaj" disabled>Izveštaj o radu</button>
+                <button data-type="op" disabled>Osnovni podaci</button>
+            </div>
+            <div id="statusMessage" class="status-message"></div>
         </div>
-        <div class="button-group">
-            <button data-type="an" disabled>Analiza nastave</button>
-            <button data-type="edn" disabled>Evidencija držanja nastave</button>
-            <button data-type="izvestaj" disabled>Izveštaj o radu</button>
-            <button data-type="op" disabled>Osnovni podaci</button>
+
+        <!-- New section for Opterećenje PDF generation -->
+        <div class="container" id="opterecenjeContainer">
+            <h1>PDF Generator opterećenja nastavnika</h1>
+            <div class="file-input">
+                <label for="excelFileOpterecenje" class="custom-file-label">Izaberi Excel fajl</label>
+                <input type="file" id="excelFileOpterecenje" accept=".xls,.xlsx" style="display: none;">
+                <p id="fileInfoOpterecenje"></p>
+            </div>
+            <div class="button-group">
+                <button id="generateSingleBtn" disabled>Generiši PDF za jednog nastavnika</button>
+                <button id="generateAllBtn" disabled>Generiši PDF za sve nastavnike (ZIP)</button>
+            </div>
+            <div id="statusMessageOpterecenje" class="status-message"></div>
         </div>
-        <div id="statusMessage" class="status-message"></div>
     </div>
 
     <!-- Modal for Izveštaj o radu -->
@@ -225,11 +277,22 @@
         </div>
     </div>
 
+    <!-- Modal for Opterećenje nastavnika (single professor) -->
+    <div id="opterecenjeModal" class="modal">
+        <div class="modal-content">
+            <span class="close" id="closeOpterecenjeModal">&times;</span>
+            <h2>Unesite ime i prezime nastavnika</h2>
+            <input type="text" id="modalProfessorNameInput" placeholder="Ime i prezime nastavnika" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid #ddd; margin-bottom: 16px;">
+            <button id="modalOpterecenjeSelectBtn" class="modal-select-btn">Generiši</button>
+        </div>
+    </div>
+
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         const fileInput = document.getElementById('excelFile');
         const fileInfo = document.getElementById('fileInfo');
-        const buttons = document.querySelectorAll('.button-group > button');
+        const pdfGenContainer = document.getElementById('pdfGeneratorContainer');
+        const buttons = pdfGenContainer.querySelectorAll('.button-group > button');
         const statusMessage = document.getElementById('statusMessage');
         // Remove old sheetSelect, use modalSheetSelect for modal
         const modal = document.getElementById('izvestajModal');
@@ -428,6 +491,147 @@
                 }
             }
         };
+
+        // --- Opterećenje section logic ---
+        const excelFileOpterecenje = document.getElementById('excelFileOpterecenje');
+        const fileInfoOpterecenje = document.getElementById('fileInfoOpterecenje');
+        const generateSingleBtn = document.getElementById('generateSingleBtn');
+        const generateAllBtn = document.getElementById('generateAllBtn');
+        const statusMessageOpterecenje = document.getElementById('statusMessageOpterecenje');
+
+        excelFileOpterecenje.addEventListener('change', function() {
+            const file = excelFileOpterecenje.files[0];
+            if (file) {
+                fileInfoOpterecenje.textContent = `Izabran fajl: ${file.name}`;
+                fileInfoOpterecenje.classList.add('has-content');
+                generateSingleBtn.disabled = false;
+                generateAllBtn.disabled = false;
+            } else {
+                fileInfoOpterecenje.textContent = '';
+                fileInfoOpterecenje.classList.remove('has-content');
+                generateSingleBtn.disabled = true;
+                generateAllBtn.disabled = true;
+            }
+            statusMessageOpterecenje.textContent = '';
+            statusMessageOpterecenje.className = 'status-message';
+        });
+
+        // Modal elements for opterecenje
+        const opterecenjeModal = document.getElementById('opterecenjeModal');
+        const closeOpterecenjeModal = document.getElementById('closeOpterecenjeModal');
+        const modalProfessorNameInput = document.getElementById('modalProfessorNameInput');
+        const modalOpterecenjeSelectBtn = document.getElementById('modalOpterecenjeSelectBtn');
+
+        generateSingleBtn.addEventListener('click', function() {
+            // Show modal for professor name input
+            modalProfessorNameInput.value = '';
+            opterecenjeModal.style.display = 'block';
+            modalProfessorNameInput.focus();
+        });
+
+        closeOpterecenjeModal.onclick = function() {
+            opterecenjeModal.style.display = 'none';
+        };
+        window.addEventListener('click', function(event) {
+            if (event.target === opterecenjeModal) {
+                opterecenjeModal.style.display = 'none';
+            }
+        });
+
+        modalOpterecenjeSelectBtn.onclick = async function() {
+            const file = excelFileOpterecenje.files[0];
+            const professorName = modalProfessorNameInput.value.trim();
+            if (!file) {
+                showStatusOpterecenje('Molim Vas da odaberete fajl.', 'error');
+                opterecenjeModal.style.display = 'none';
+                return;
+            }
+            if (!professorName) {
+                showStatusOpterecenje('Molim Vas da unesete ime i prezime nastavnika.', 'error');
+                modalProfessorNameInput.focus();
+                return;
+            }
+            generateSingleBtn.disabled = true;
+            generateAllBtn.disabled = true;
+            showStatusOpterecenje('Procesiranje fajla...', 'info');
+            opterecenjeModal.style.display = 'none';
+            const formData = new FormData();
+            formData.append('excel_file', file);
+            formData.append('professor_name', professorName);
+            try {
+                const response = await fetch('/procesiranje', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Greška u obradi fajla');
+                }
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Opterecenje_${professorName.replace(/\s+/g, '_')}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                showStatusOpterecenje('PDF uspešno generisan!', 'success');
+            } catch (error) {
+                showStatusOpterecenje(`Greška: ${error.message}`, 'error');
+            } finally {
+                if (excelFileOpterecenje.files.length > 0) {
+                    generateSingleBtn.disabled = false;
+                    generateAllBtn.disabled = false;
+                }
+            }
+        };
+
+        generateAllBtn.addEventListener('click', async function() {
+            const file = excelFileOpterecenje.files[0];
+            if (!file) {
+                showStatusOpterecenje('Molim Vas da odaberete fajl.', 'error');
+                return;
+            }
+            generateSingleBtn.disabled = true;
+            generateAllBtn.disabled = true;
+            showStatusOpterecenje('Procesiranje fajla...', 'info');
+            const formData = new FormData();
+            formData.append('excel_file_svih', file);
+            try {
+                const response = await fetch('/procesiranjesvih', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Greška u obradi fajla');
+                }
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Opterecenje_svih_nastavnika.zip`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                showStatusOpterecenje('ZIP uspešno generisan!', 'success');
+            } catch (error) {
+                showStatusOpterecenje(`Greška: ${error.message}`, 'error');
+            } finally {
+                if (excelFileOpterecenje.files.length > 0) {
+                    generateSingleBtn.disabled = false;
+                    generateAllBtn.disabled = false;
+                }
+            }
+        });
+
+        function showStatusOpterecenje(message, type) {
+            statusMessageOpterecenje.textContent = message;
+            statusMessageOpterecenje.className = `status-message ${type}`;
+        }
+        // --- End Opterećenje section logic ---
     });
     </script>
 </body>
