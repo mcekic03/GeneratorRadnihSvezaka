@@ -11,7 +11,7 @@ from generatorpdfkonacno import generate_pdf
 from datetime import datetime
 from zipfile import ZipFile
 
-#from waitress import serve
+from waitress import serve
 
 app = Flask(__name__, static_folder='static')
 
@@ -234,5 +234,5 @@ def procesiranjesvih():
         return jsonify({'error': f'Greška u procesiranju svih: {str(e)}'}), 500
 
 if __name__ == "__main__": 
-    app.run(debug=True, port=1000)
-    #serve(app, host='0.0.0.0', port=80)
+    #app.run(debug=True, port=1000)
+    serve(app, host='0.0.0.0', port=80)
