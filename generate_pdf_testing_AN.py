@@ -10,6 +10,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.platypus import Image
 from reportlab.lib.enums import TA_CENTER
 from reportlab.pdfbase.pdfmetrics import stringWidth
+import openpyxl
 
 def is_header(row):
     non_empty = row.dropna()
@@ -113,9 +114,18 @@ def find_header_and_cols(df, col_names):
             return r_idx, col_indices
     return -1, None
 
+def unhide_all_rows(filepath, sheet_name):
+    wb = openpyxl.load_workbook(filepath)
+    ws = wb[sheet_name]
+    for row in ws.row_dimensions:
+        ws.row_dimensions[row].hidden = False
+    wb.save(filepath)
+
 def process_analiza_nastave(filepath):
     try:
         print("\n=== Starting Data Processing (Un-Pivot Method) ===")
+        # Only unhide all rows in 'Analiza nastave' before reading
+        unhide_all_rows(filepath, "Analiza nastave")
         df = pd.read_excel(
             filepath,
             sheet_name="Analiza nastave",
@@ -124,11 +134,28 @@ def process_analiza_nastave(filepath):
         )
 
         # -- Table 1: Broj časova nastave --
-        t1_header_names = ["Predmeti", "predavanja", "(blank)", "Grand Total"]
-        t1_header_row, t1_cols = find_header_and_cols(df, t1_header_names)
-        if t1_header_row == -1: raise ValueError("Table 1 headers not found")
+        t1_header_variants = [
+            ["Predmeti", "predavanja", "(blank)", "Grand Total"],
+            ["Predmeti", "računske vežbe", "(blank)", "Grand Total"]
+        ]
+        t1_header_row, t1_cols = -1, None
+        for header_names in t1_header_variants:
+            t1_header_row, t1_cols = find_header_and_cols(df, header_names)
+            if t1_header_row != -1:
+                break
+        if t1_header_row == -1:
+            raise ValueError("Table 1 headers not found")
+        # Use the actual found header for table1_data
+        table1_data = [header_names]
         
-        table1_data = [["Predmeti", "predavanja", "(blank)", "Grand Total"]]
+        # Find which header is the 'hours' column
+        hours_col_name = None
+        for possible in ["predavanja", "računske vežbe"]:
+            if possible in t1_cols:
+                hours_col_name = possible
+                break
+        if hours_col_name is None:
+            raise ValueError("Neither 'predavanja' nor 'računske vežbe' found in Table 1 headers")
         
         # Context tracking
         current_location, current_year, current_month = "", "", ""
@@ -151,7 +178,7 @@ def process_analiza_nastave(filepath):
 
             # Check for subject and data
             subject = str(row.iloc[t1_cols["Predmeti"]]).strip()
-            predavanja_val = row.iloc[t1_cols["predavanja"]]
+            predavanja_val = row.iloc[t1_cols[hours_col_name]]
 
             # Accept both numeric and string numbers
             is_valid_predavanja = False
@@ -398,7 +425,7 @@ def generate_pdf_an(tables_data, pdf_path, professor_name):
     doc.build(story)
 
 # File processing
-filepath = "Novi_Izveštaj o radu_za_Nastavnike_Natasa_Bogdanovic - Copy.xlsx"
+filepath = "Izveštaj o radu_za_Nastavnike_Jovan_Misic.xlsx"
 
 # First, analyze the structure
 analysis_df = analyze_sheet_structure(filepath)
@@ -407,7 +434,7 @@ analysis_df = analyze_sheet_structure(filepath)
 tables_data, professor_name = process_analiza_nastave(filepath)
 
 if tables_data and professor_name:
-    generate_pdf_an(tables_data, "ANtest49.pdf", professor_name)
+    generate_pdf_an(tables_data, "ANtest2.pdf", professor_name)
     print("PDF generated successfully!")
 else:
     print("Failed to generate PDF due to data processing errors.") 
